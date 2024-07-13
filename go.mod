@@ -4,6 +4,7 @@ go 1.22.2
 
 require (
 	github.com/Masterminds/squirrel v1.5.4
+	github.com/google/uuid v1.6.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lib/pq v1.10.9
 	google.golang.org/grpc v1.65.0

@@ -14,7 +14,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	storage, err := storage.New(configs)
+	storage, err := storage.New(configs, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -2,73 +2,60 @@ package storage
 
 import (
 	"context"
-	"database/sql"
-	"log/slog"
+	pb "order-service/genprotos/order_pb"
 	"time"
 
-	pb "order-service/genprotos/order_pb"
-	"order-service/internal/config"
-
-	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 )
 
-type (
-	OrderSt struct {
-		db           *sql.DB
-		queryBuilder sq.StatementBuilderType
-		logger       *slog.Logger
-	}
-)
-
-func New(config *config.Config, logger *slog.Logger) (*OrderSt, error) {
-
-	db, err := ConnectDB(*config)
+func (s *OrderSt) GetDishPriceById(ctx context.Context, dish_id string) (float64, error) {
+	query, args, err := s.queryBuilder.Select("price").
+		From("dishes").
+		Where("dish_id =?", dish_id).
+		ToSql()
 	if err != nil {
-		return nil, err
+		s.logger.Error(err.Error())
+		return 0, err
 	}
 
-	return &OrderSt{
-		db:           db,
-		queryBuilder: sq.StatementBuilder.PlaceholderFormat(sq.Dollar),
-		logger:       logger,
-	}, nil
+	row := s.db.QueryRowContext(ctx, query, args...)
+	var price float64
+	err = row.Scan(&price)
+	if err != nil {
+		s.logger.Error(err.Error())
+		return 0, err
+	}
+
+	return price, nil
 }
 
-// 5
-func (s *OrderSt) CreateOrder(ctx context.Context, in *pb.CreateOrderRequest) (*pb.CreateOrderResponse, error) {
-	order_id := uuid.New().String()
+// 1
+func (s *OrderSt) AddDish(ctx context.Context, in *pb.AddDishRequest) (*pb.AddDishResponse, error) {
+	dish_id := uuid.New().String()
 	created_at := time.Now()
-	var total_amount float32
-	for _, item := range in.Items {
-		price, err := s.GetDishPriceById(ctx, item.DishId)
-		if err != nil {
-			s.logger.Error(err.Error())
-			return nil, err
-		}
-		total_amount += float32(price) * float32(item.Quantity)
-	}
 
-	query, args, err := s.queryBuilder.Insert("orders").
+	query, args, err := s.queryBuilder.Insert("dishes").
 		Columns(
-			"order_id",
-			"user_id",
+			"dish_id",
 			"kitchen_id",
-			"items",
-			"total_amount",
-			"status",
-			"delivery_address",
-			"delivery_time",
-			"created_at").
+			"name",
+			"description",
+			"price",
+			"category",
+			"ingredients",
+			"available",
+			"created_at",
+			"updates_at").
 		Values(
-			order_id,
-			in.UserId,
+			dish_id,
 			in.KitchenId,
-			in.Items,
-			total_amount,
-			"pending",
-			in.DeliveryAddress,
-			in.DeliveryTime,
+			in.Name,
+			in.Description,
+			in.Price,
+			in.Category,
+			in.Ingredients,
+			in.Available,
+			created_at,
 			created_at).
 		ToSql()
 	if err != nil {
@@ -82,19 +69,33 @@ func (s *OrderSt) CreateOrder(ctx context.Context, in *pb.CreateOrderRequest) (*
 		return nil, err
 	}
 
-	return &pb.CreateOrderResponse{
-		OrderId: order_id,
+	return &pb.AddDishResponse{
+		DishId:      dish_id,
+		KitchenId:   in.KitchenId,
+		Name:        in.Name,
+		Description: in.Description,
+		Price:       in.Price,
+		Category:    in.Category,
+		Ingredients: in.Ingredients,
+		Available:   in.Available,
+		CreatedAt:   created_at.Format("2006-01-02 15:04:05"),
 	}, nil
 }
 
-// 6
-func (s *OrderSt) UpdateOrderStatus(ctx context.Context, in *pb.UpdateOrderStatusRequest) (*pb.UpdateOrderStatusResponse, error) {
+// 2
+func (s *OrderSt) UpdateDish(ctx context.Context, in *pb.UpdateDishRequest) (*pb.UpdateDishResponse, error) {
 	updated_at := time.Now()
 
-	query, args, err := s.queryBuilder.Update("orders").
-		Set("status", in.Status).
+	query, args, err := s.queryBuilder.Update("dishes").
+		Set("name", in.Name).
+		Set("description", in.Description).
+		Set("price", in.Price).
+		Set("category", in.Category).
+		Set("ingredients", in.Ingredients).
+		Set("available", in.Available).
 		Set("updated_at", updated_at).
-		Where(sq.Eq{"order_id": in.OrderId}).
+		Where("dish_id =?", in.DishId).
+		Where("kitchen_id =?", in.KitchenId).
 		ToSql()
 	if err != nil {
 		s.logger.Error(err.Error())
@@ -107,19 +108,46 @@ func (s *OrderSt) UpdateOrderStatus(ctx context.Context, in *pb.UpdateOrderStatu
 		return nil, err
 	}
 
-	return &pb.UpdateOrderStatusResponse{
-		OrderId:   in.OrderId,
-		Status:    in.Status,
-		UpdatedAt: updated_at.Format("2006-01-02 15:04:05"),
+	return &pb.UpdateDishResponse{
+		DishId:      in.DishId,
+		KitchenId:   in.KitchenId,
+		Name:        in.Name,
+		Description: in.Description,
+		Price:       in.Price,
+		Category:    in.Category,
+		Ingredients: in.Ingredients,
+		Available:   in.Available,
+		UpdatedAt:   updated_at.Format("2006-01-02 15:04:05"),
 	}, nil
 }
 
-// 7
-func (s *OrderSt) ListOfOrders(ctx context.Context, in *pb.ListOfOrdersRequest) (*pb.ListOfOrdersResponse, error) {
-	query, args, err := s.queryBuilder.Select("order_id", "kitchen_id", "total_amount", "status", "delivery_address").
-		From("orders").
-		Where(sq.Eq{"user_id": in.UserId}).
-		OrderBy("created_at DESC").
+// 3
+func (s *OrderSt) DeleteDish(ctx context.Context, in *pb.DeleteDishRequest) (*pb.DeleteDishResponse, error) {
+	query, args, err := s.queryBuilder.Delete("dishes").
+		Where("dish_id =?", in.DishId).
+		Where("kitchen_id =?", in.KitchenId).
+		ToSql()
+	if err != nil {
+		s.logger.Error(err.Error())
+		return nil, err
+	}
+
+	_, err = s.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		s.logger.Error(err.Error())
+		return nil, err
+	}
+
+	return &pb.DeleteDishResponse{
+		Message: "Dish deleted",
+	}, nil
+}
+
+// 4
+func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb.ListDishesResponse, error) {
+	query, args, err := s.queryBuilder.Select("dish_id", "name", "description", "price", "category", "ingredients", "available").
+		From("dishes").
+		Where("kitchen_id =?", in.KitchenId).
 		ToSql()
 	if err != nil {
 		s.logger.Error(err.Error())
@@ -131,75 +159,23 @@ func (s *OrderSt) ListOfOrders(ctx context.Context, in *pb.ListOfOrdersRequest) 
 		s.logger.Error(err.Error())
 		return nil, err
 	}
+
 	defer rows.Close()
 
-	var orders []*pb.Order
-
+	dishes := []*pb.Dish{}
 	for rows.Next() {
-		order := &pb.Order{}
-		err = rows.Scan(
-			&order.OrderId,
-			&order.KitchenId,
-			&order.TotalAmount,
-			&order.Status,
-			&order.DeliveryAddress,
-		)
+		dish := &pb.Dish{}
+		err = rows.Scan(&dish.DishId, &dish.Name, &dish.Description, &dish.Price, &dish.Category, &dish.Ingredients, &dish.Available)
 		if err != nil {
 			s.logger.Error(err.Error())
 			return nil, err
 		}
-		orders = append(orders, order)
+		dishes = append(dishes, dish)
 	}
 
-	return &pb.ListOfOrdersResponse{
-		Orders: orders,
+	return &pb.ListDishesResponse{
+		Dishes: dishes,
 	}, nil
-}
-
-// 8
-func (s *OrderSt) GetOrderByKitchenId(ctx context.Context, in *pb.GetOrderByKitchenIdRequest) (*pb.GetOrderByKitchenIdResponse, error) {
-	query, args, err := s.queryBuilder.Select("order_id", "kitchen_id", "total_amount", "status", "delivery_address").
-		From("orders").
-		Where(sq.Eq{"kitchen_id": in.KitchenId}).
-		ToSql()
-	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
-	}
-
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
-	}
-	defer rows.Close()
-
-	var orders []*pb.Order
-
-	for rows.Next() {
-		order := &pb.Order{}
-		err = rows.Scan(
-			&order.OrderId,
-			&order.KitchenId,
-			&order.TotalAmount,
-			&order.Status,
-			&order.DeliveryAddress,
-		)
-		if err != nil {
-			s.logger.Error(err.Error())
-			return nil, err
-		}
-		orders = append(orders, order)
-	}
-
-	return &pb.GetOrderByKitchenIdResponse{
-		Orders: orders,
-	}, nil
-}
-
-// 12
-func (s *OrderSt) GetFullInfoAboutOrder(ctx context.Context, in *pb.GetFullInfoAboutOrderRequest) (*pb.GetFullInfoAboutOrderResponse, error) {
-	return nil, nil
 }
 
 /*
