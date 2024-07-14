@@ -1,25 +1,24 @@
 package service
 
 import (
-	"log"
-	"os"
+	"log/slog"
 
-	"order-service/genprotos/order_pb"
+	pb "order-service/genprotos/order_pb"
 	"order-service/internal/storage"
 )
 
 type (
 	OrderServiceSt struct {
-		order_pb.UnimplementedOrderServiceServer
+		pb.UnimplementedOrderServiceServer
 		service storage.OrderSt
-		logger  *log.Logger
+		logger  *slog.Logger
 	}
 )
 
-func New(service storage.OrderSt) *OrderServiceSt {
+func New(service storage.OrderSt, logger *slog.Logger) *OrderServiceSt {
 	return &OrderServiceSt{
 		service: service,
-		logger:  log.New(os.Stdout, "INFO: ", log.Ldate|log.Ltime|log.Lshortfile),
+		logger:  logger,
 	}
 }
 

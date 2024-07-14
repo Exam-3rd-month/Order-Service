@@ -6,12 +6,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/lib/pq"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (s *OrderSt) GetDishPriceById(ctx context.Context, dish_id string) (float64, error) {
 	query, args, err := s.queryBuilder.Select("price").
 		From("dishes").
 		Where("dish_id =?", dish_id).
+		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
 		s.logger.Error(err.Error())
@@ -27,6 +31,24 @@ func (s *OrderSt) GetDishPriceById(ctx context.Context, dish_id string) (float64
 	}
 
 	return price, nil
+}
+
+func (s *OrderSt) GetDishNameById(ctx context.Context, dishID string) (string, error) {
+    query, args, err := s.queryBuilder.Select("name").
+        From("dishes").
+        Where("dish_id = ?", dishID).
+        ToSql()
+    if err != nil {
+        return "", err
+    }
+
+    var name string
+    err = s.db.QueryRowContext(ctx, query, args...).Scan(&name)
+    if err != nil {
+        return "", err
+    }
+
+    return name, nil
 }
 
 // 1
@@ -45,7 +67,7 @@ func (s *OrderSt) AddDish(ctx context.Context, in *pb.AddDishRequest) (*pb.AddDi
 			"ingredients",
 			"available",
 			"created_at",
-			"updates_at").
+			"updated_at").
 		Values(
 			dish_id,
 			in.KitchenId,
@@ -53,7 +75,7 @@ func (s *OrderSt) AddDish(ctx context.Context, in *pb.AddDishRequest) (*pb.AddDi
 			in.Description,
 			in.Price,
 			in.Category,
-			in.Ingredients,
+			pq.Array(in.Ingredients),
 			in.Available,
 			created_at,
 			created_at).
@@ -86,26 +108,49 @@ func (s *OrderSt) AddDish(ctx context.Context, in *pb.AddDishRequest) (*pb.AddDi
 func (s *OrderSt) UpdateDish(ctx context.Context, in *pb.UpdateDishRequest) (*pb.UpdateDishResponse, error) {
 	updated_at := time.Now()
 
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		s.logger.Error("Failed to begin transaction", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+	defer tx.Rollback()
+
 	query, args, err := s.queryBuilder.Update("dishes").
 		Set("name", in.Name).
 		Set("description", in.Description).
 		Set("price", in.Price).
 		Set("category", in.Category).
-		Set("ingredients", in.Ingredients).
+		Set("ingredients", pq.Array(in.Ingredients)).
 		Set("available", in.Available).
 		Set("updated_at", updated_at).
-		Where("dish_id =?", in.DishId).
-		Where("kitchen_id =?", in.KitchenId).
+		Where("dish_id = ?", in.DishId).
+		Where("kitchen_id = ?", in.KitchenId).
+		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
+		s.logger.Error("Failed to build update query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
-	_, err = s.db.ExecContext(ctx, query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
+		s.logger.Error("Failed to execute update query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		s.logger.Error("Failed to get rows affected", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
+	if rowsAffected == 0 {
+		return nil, status.Error(codes.NotFound, "Dish not found or already deleted")
+	}
+
+	if err := tx.Commit(); err != nil {
+		s.logger.Error("Failed to commit transaction", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
 	return &pb.UpdateDishResponse{
@@ -123,9 +168,11 @@ func (s *OrderSt) UpdateDish(ctx context.Context, in *pb.UpdateDishRequest) (*pb
 
 // 3
 func (s *OrderSt) DeleteDish(ctx context.Context, in *pb.DeleteDishRequest) (*pb.DeleteDishResponse, error) {
-	query, args, err := s.queryBuilder.Delete("dishes").
+	query, args, err := s.queryBuilder.Update("dishes").
+		Set("deleted_at", time.Now()).
 		Where("dish_id =?", in.DishId).
 		Where("kitchen_id =?", in.KitchenId).
+		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
 		s.logger.Error(err.Error())
@@ -145,36 +192,88 @@ func (s *OrderSt) DeleteDish(ctx context.Context, in *pb.DeleteDishRequest) (*pb
 
 // 4
 func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb.ListDishesResponse, error) {
-	query, args, err := s.queryBuilder.Select("dish_id", "name", "description", "price", "category", "ingredients", "available").
+	// Umumiy taomlar sonini hisoblash
+	var total int32
+	countQuery, countArgs, err := s.queryBuilder.Select("COUNT(*)").
 		From("dishes").
-		Where("kitchen_id =?", in.KitchenId).
+		Where("kitchen_id = ?", in.KitchenId).
+		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
+		s.logger.Error("Failed to build count query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+	err = s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		s.logger.Error("Failed to execute count query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
+	// Paginatsiya parametrlarini hisoblash va tekshirish
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 10 // Default limit
+	}
+
+	totalPages := (total + limit - 1) / limit
+	page := in.Page
+	if page <= 0 {
+		page = 1
+	}
+	if page > totalPages {
+		// Agar so'ralgan sahifa mavjud sahifalardan ko'p bo'lsa, oxirgi sahifani qaytaramiz
+		page = totalPages
+	}
+
+	offset := (page - 1) * limit
+
+	// Asosiy so'rov
+	query, args, err := s.queryBuilder.Select("dish_id", "name", "price", "category", "available").
+		From("dishes").
+		Where("kitchen_id = ?", in.KitchenId).
+		Where("deleted_at IS NULL").
+		Limit(uint64(limit)).
+		Offset(uint64(offset)).
+		ToSql()
+	if err != nil {
+		s.logger.Error("Failed to build query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
+		s.logger.Error("Failed to execute query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
-
 	defer rows.Close()
 
 	dishes := []*pb.Dish{}
 	for rows.Next() {
 		dish := &pb.Dish{}
-		err = rows.Scan(&dish.DishId, &dish.Name, &dish.Description, &dish.Price, &dish.Category, &dish.Ingredients, &dish.Available)
+		err = rows.Scan(
+			&dish.DishId,
+			&dish.Name,
+			&dish.Price,
+			&dish.Category,
+			&dish.Available,
+		)
 		if err != nil {
-			s.logger.Error(err.Error())
-			return nil, err
+			s.logger.Error("Failed to scan row", "error", err)
+			return nil, status.Error(codes.Internal, "Internal server error")
 		}
 		dishes = append(dishes, dish)
 	}
 
+	if err = rows.Err(); err != nil {
+		s.logger.Error("Error after scanning rows", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
 	return &pb.ListDishesResponse{
 		Dishes: dishes,
+		Total:  total,
+		Page:   page,
+		Limit:  limit,
 	}, nil
 }
 

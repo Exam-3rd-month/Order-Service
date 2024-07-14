@@ -44,6 +44,7 @@ const (
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OrderServiceClient interface {
+	// Dish
 	// 1
 	AddDish(ctx context.Context, in *AddDishRequest, opts ...grpc.CallOption) (*AddDishResponse, error)
 	// 2
@@ -52,7 +53,7 @@ type OrderServiceClient interface {
 	DeleteDish(ctx context.Context, in *DeleteDishRequest, opts ...grpc.CallOption) (*DeleteDishResponse, error)
 	// 4
 	ListDishes(ctx context.Context, in *ListDishesRequest, opts ...grpc.CallOption) (*ListDishesResponse, error)
-	// 5
+	// Order
 	CreateOrder(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error)
 	// 6
 	UpdateOrderStatus(ctx context.Context, in *UpdateOrderStatusRequest, opts ...grpc.CallOption) (*UpdateOrderStatusResponse, error)
@@ -287,6 +288,7 @@ func (c *orderServiceClient) UpdateDishNutritionInfo(ctx context.Context, in *Up
 // All implementations must embed UnimplementedOrderServiceServer
 // for forward compatibility
 type OrderServiceServer interface {
+	// Dish
 	// 1
 	AddDish(context.Context, *AddDishRequest) (*AddDishResponse, error)
 	// 2
@@ -295,7 +297,7 @@ type OrderServiceServer interface {
 	DeleteDish(context.Context, *DeleteDishRequest) (*DeleteDishResponse, error)
 	// 4
 	ListDishes(context.Context, *ListDishesRequest) (*ListDishesResponse, error)
-	// 5
+	// Order
 	CreateOrder(context.Context, *CreateOrderRequest) (*CreateOrderResponse, error)
 	// 6
 	UpdateOrderStatus(context.Context, *UpdateOrderStatusRequest) (*UpdateOrderStatusResponse, error)
