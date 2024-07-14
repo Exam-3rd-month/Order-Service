@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"log/slog"
 	"time"
 
@@ -26,7 +27,6 @@ type (
 )
 
 func New(config *config.Config, logger *slog.Logger) (*OrderSt, error) {
-
 	db, err := ConnectDB(*config)
 	if err != nil {
 		return nil, err
@@ -153,61 +153,140 @@ func (s *OrderSt) UpdateOrderStatus(ctx context.Context, in *pb.UpdateOrderStatu
 
 // 7
 func (s *OrderSt) ListOfOrders(ctx context.Context, in *pb.ListOfOrdersRequest) (*pb.ListOfOrdersResponse, error) {
-	query, args, err := s.queryBuilder.Select("order_id", "kitchen_id", "total_amount", "status", "delivery_address").
+	var total int32
+	countQuery, countArgs, err := s.queryBuilder.Select("COUNT(*)").
 		From("orders").
-		Where(sq.Eq{"user_id": in.UserId}).
-		OrderBy("created_at DESC").
+		Where("user_id = ?", in.UserId).
 		ToSql()
 	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
+		s.logger.Error("Failed to build count query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
+	err = s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		s.logger.Error("Failed to execute count query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+
+	totalPages := (total + limit - 1) / limit
+	page := in.Page
+	if page <= 0 {
+		page = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	offset := (page - 1) * limit
+
+	query, args, err := s.queryBuilder.Select("order_id", "kitchen_id", "total_amount", "status", "delivery_address", "created_at").
+		From("orders").
+		Where("user_id = ?", in.UserId).
+		OrderBy("created_at DESC").
+		Limit(uint64(limit)).
+		Offset(uint64(offset)).
+		ToSql()
+	if err != nil {
+		s.logger.Error("Failed to build query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
+		s.logger.Error("Failed to execute query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 	defer rows.Close()
 
-	var orders []*pb.Order
-
+	orders := []*pb.Order{}
 	for rows.Next() {
 		order := &pb.Order{}
+		var createdAt time.Time
 		err = rows.Scan(
 			&order.OrderId,
 			&order.KitchenId,
 			&order.TotalAmount,
 			&order.Status,
 			&order.DeliveryAddress,
+			&createdAt,
 		)
 		if err != nil {
-			s.logger.Error(err.Error())
-			return nil, err
+			s.logger.Error("Failed to scan row", "error", err)
+			return nil, status.Error(codes.Internal, "Internal server error")
 		}
+		order.CreatedAt = createdAt.Format("2006-01-02 15:04:05")
 		orders = append(orders, order)
+	}
+
+	if err = rows.Err(); err != nil {
+		s.logger.Error("Error after scanning rows", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
 	return &pb.ListOfOrdersResponse{
 		Orders: orders,
+		Total:  total,
+		Page:   page,
+		Limit:  limit,
 	}, nil
 }
 
 // 8
 func (s *OrderSt) GetOrderByKitchenId(ctx context.Context, in *pb.GetOrderByKitchenIdRequest) (*pb.GetOrderByKitchenIdResponse, error) {
-	query, args, err := s.queryBuilder.Select("order_id", "kitchen_id", "total_amount", "status", "delivery_address").
+	var total int32
+	countQuery, countArgs, err := s.queryBuilder.Select("COUNT(*)").
 		From("orders").
 		Where(sq.Eq{"kitchen_id": in.KitchenId}).
 		ToSql()
 	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
+		s.logger.Error("Failed to build count query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
+	err = s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
+	if err != nil {
+		s.logger.Error("Failed to execute count query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
+	limit := in.Limit
+	if limit <= 0 {
+		limit = 10
+	}
+
+	totalPages := (total + limit - 1) / limit
+	page := in.Page
+	if page <= 0 {
+		page = 1
+	}
+	if page > totalPages {
+		page = totalPages
+	}
+
+	offset := (page - 1) * limit
+
+	query, args, err := s.queryBuilder.Select("order_id", "kitchen_id", "total_amount", "status", "delivery_address").
+		From("orders").
+		Where(sq.Eq{"kitchen_id": in.KitchenId}).
+		OrderBy("created_at DESC").
+		Limit(uint64(limit)).
+		Offset(uint64(offset)).
+		ToSql()
+	if err != nil {
+		s.logger.Error("Failed to build query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
+		s.logger.Error("Failed to execute query", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
 	}
 	defer rows.Close()
 
@@ -223,20 +302,69 @@ func (s *OrderSt) GetOrderByKitchenId(ctx context.Context, in *pb.GetOrderByKitc
 			&order.DeliveryAddress,
 		)
 		if err != nil {
-			s.logger.Error(err.Error())
-			return nil, err
+			s.logger.Error("Failed to scan row", "error", err)
+			return nil, status.Error(codes.Internal, "Internal server error")
 		}
 		orders = append(orders, order)
 	}
 
+	if err = rows.Err(); err != nil {
+		s.logger.Error("Error after scanning rows", "error", err)
+		return nil, status.Error(codes.Internal, "Internal server error")
+	}
+
 	return &pb.GetOrderByKitchenIdResponse{
 		Orders: orders,
+		Total:  total,
+		Page:   page,
+		Limit:  limit,
 	}, nil
 }
 
 // 12
 func (s *OrderSt) GetFullInfoAboutOrder(ctx context.Context, in *pb.GetFullInfoAboutOrderRequest) (*pb.GetFullInfoAboutOrderResponse, error) {
-	return nil, nil
+	query, args, err := s.queryBuilder.Select(
+		"user_id",
+		"kitchen_id",
+		"status",
+		"delivery_address",
+		"delivery_time",
+		"created_at",
+		"updated_at").
+		From("orders").
+		Where(sq.Eq{"order_id": in.OrderId}).
+		Where("deleted_at IS NULL").
+		ToSql()
+	if err != nil {
+		s.logger.Error("Failed to build query", "error", err)
+		return nil, err
+	}
+
+	log.Println(query)
+	var order pb.GetFullInfoAboutOrderResponse
+	var deliveryTime, createdAt, updatedAt time.Time
+
+	err = s.db.QueryRowContext(ctx, query, args...).Scan(
+		&order.UserId,
+		&order.KitchenId,
+		&order.Status,
+		&order.DiliveryAddress,
+		&deliveryTime,
+		&createdAt,
+		&updatedAt,
+	)
+
+	if err != nil {
+		s.logger.Error("Failed to scan row", "error", err)
+		return nil, err
+	}
+
+	order.OrderId = in.OrderId
+	order.DeliveryTime = deliveryTime.Format(time.RFC3339)
+	order.CreatedAt = createdAt.Format(time.RFC3339)
+	order.UpdatedAt = updatedAt.Format(time.RFC3339)
+
+	return &order, nil
 }
 
 /*

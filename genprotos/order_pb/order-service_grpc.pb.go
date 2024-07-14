@@ -45,25 +45,26 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type OrderServiceClient interface {
 	// Dish
-	// 1
+	// 1 Done
 	AddDish(ctx context.Context, in *AddDishRequest, opts ...grpc.CallOption) (*AddDishResponse, error)
-	// 2
+	// 2 Done
 	UpdateDish(ctx context.Context, in *UpdateDishRequest, opts ...grpc.CallOption) (*UpdateDishResponse, error)
-	// 3
+	// 3 Done
 	DeleteDish(ctx context.Context, in *DeleteDishRequest, opts ...grpc.CallOption) (*DeleteDishResponse, error)
-	// 4
+	// 4 Done
 	ListDishes(ctx context.Context, in *ListDishesRequest, opts ...grpc.CallOption) (*ListDishesResponse, error)
 	// Order
+	// 5 Done
 	CreateOrder(ctx context.Context, in *CreateOrderRequest, opts ...grpc.CallOption) (*CreateOrderResponse, error)
-	// 6
+	// 6 Done
 	UpdateOrderStatus(ctx context.Context, in *UpdateOrderStatusRequest, opts ...grpc.CallOption) (*UpdateOrderStatusResponse, error)
-	// 7
+	// 7 Done
 	ListOfOrders(ctx context.Context, in *ListOfOrdersRequest, opts ...grpc.CallOption) (*ListOfOrdersResponse, error)
-	// 8
+	// 8 Done
 	GetOrderByKitchenId(ctx context.Context, in *GetOrderByKitchenIdRequest, opts ...grpc.CallOption) (*GetOrderByKitchenIdResponse, error)
-	// 9
+	// 9 Done
 	AddReview(ctx context.Context, in *AddReviewRequest, opts ...grpc.CallOption) (*AddReviewResponse, error)
-	// 10
+	// 10 Done
 	ListReviews(ctx context.Context, in *ListReviewsRequest, opts ...grpc.CallOption) (*ListReviewsResponse, error)
 	// 11
 	CreatePayment(ctx context.Context, in *CreatePaymentRequest, opts ...grpc.CallOption) (*CreatePaymentResponse, error)
@@ -289,25 +290,26 @@ func (c *orderServiceClient) UpdateDishNutritionInfo(ctx context.Context, in *Up
 // for forward compatibility
 type OrderServiceServer interface {
 	// Dish
-	// 1
+	// 1 Done
 	AddDish(context.Context, *AddDishRequest) (*AddDishResponse, error)
-	// 2
+	// 2 Done
 	UpdateDish(context.Context, *UpdateDishRequest) (*UpdateDishResponse, error)
-	// 3
+	// 3 Done
 	DeleteDish(context.Context, *DeleteDishRequest) (*DeleteDishResponse, error)
-	// 4
+	// 4 Done
 	ListDishes(context.Context, *ListDishesRequest) (*ListDishesResponse, error)
 	// Order
+	// 5 Done
 	CreateOrder(context.Context, *CreateOrderRequest) (*CreateOrderResponse, error)
-	// 6
+	// 6 Done
 	UpdateOrderStatus(context.Context, *UpdateOrderStatusRequest) (*UpdateOrderStatusResponse, error)
-	// 7
+	// 7 Done
 	ListOfOrders(context.Context, *ListOfOrdersRequest) (*ListOfOrdersResponse, error)
-	// 8
+	// 8 Done
 	GetOrderByKitchenId(context.Context, *GetOrderByKitchenIdRequest) (*GetOrderByKitchenIdResponse, error)
-	// 9
+	// 9 Done
 	AddReview(context.Context, *AddReviewRequest) (*AddReviewResponse, error)
-	// 10
+	// 10 Done
 	ListReviews(context.Context, *ListReviewsRequest) (*ListReviewsResponse, error)
 	// 11
 	CreatePayment(context.Context, *CreatePaymentRequest) (*CreatePaymentResponse, error)

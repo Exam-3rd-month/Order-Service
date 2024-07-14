@@ -22,3 +22,15 @@ func (s *OrderServiceSt) ListOfOrders(ctx context.Context, req *pb.ListOfOrdersR
 	s.logger.Info("list of orders request")
 	return s.service.ListOfOrders(ctx, req)
 }
+
+// 8
+func (s *OrderServiceSt) GetOrderByKitchenId(ctx context.Context, req *pb.GetOrderByKitchenIdRequest) (*pb.GetOrderByKitchenIdResponse, error) {
+	s.logger.Info("get order by kitchen id request")
+	return s.service.GetOrderByKitchenId(ctx, req)
+}
+
+// 12
+func (s *OrderServiceSt) GetFullInfoAboutOrder(ctx context.Context, req *pb.GetFullInfoAboutOrderRequest) (*pb.GetFullInfoAboutOrderResponse, error) {
+	s.logger.Info("get full info about order request")
+	return s.service.GetFullInfoAboutOrder(ctx, req)
+}

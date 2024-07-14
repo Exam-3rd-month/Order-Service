@@ -57,42 +57,92 @@ func (s *OrderSt) AddReview(ctx context.Context, in *pb.AddReviewRequest) (*pb.A
 
 // 10
 func (s *OrderSt) ListReviews(ctx context.Context, in *pb.ListReviewsRequest) (*pb.ListReviewsResponse, error) {
-	query, args, err := s.queryBuilder.Select("review_id", "user_id", "rating", "comment", "created_at").
-		From("reviews").
-		Where(sq.Eq{"kitchen_id": in.KitchenId}).
-		OrderBy("created_at DESC").
-		ToSql()
-	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
-	}
+    // Calculate total reviews and average rating
+    var total int32
+    var averageRating float32
+    countQuery, countArgs, err := s.queryBuilder.Select("COUNT(*)", "AVG(rating)").
+        From("reviews").
+        Where(sq.Eq{"kitchen_id": in.KitchenId}).
+        ToSql()
+    if err != nil {
+        s.logger.Error("Failed to build count query", "error", err)
+        return nil, err
+    }
 
-	rows, err := s.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		s.logger.Error(err.Error())
-		return nil, err
-	}
-	defer rows.Close()
+    err = s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total, &averageRating)
+    if err != nil {
+        s.logger.Error("Failed to execute count query", "error", err)
+        return nil, err
+    }
 
-	var reviews []*pb.Review
+    // Set default values for limit and page
+    limit := in.Limit
+    if limit <= 0 {
+        limit = 10
+    }
 
-	for rows.Next() {
-		review := &pb.Review{}
-		err = rows.Scan(
-			&review.ReviewId,
-			&review.UserName,
-			&review.Rating,
-			&review.Comment,
-			&review.CreatedAt,
-		)
-		if err != nil {
-			s.logger.Error(err.Error())
-			return nil, err
-		}
-		reviews = append(reviews, review)
-	}
+    totalPages := (total + limit - 1) / limit
+    page := in.Page
+    if page <= 0 {
+        page = 1
+    }
+    if page > totalPages {
+        page = totalPages
+    }
 
-	return &pb.ListReviewsResponse{
-		Reviews: reviews,
-	}, nil
+    offset := (page - 1) * limit
+
+    // Main query to fetch reviews
+    query, args, err := s.queryBuilder.Select("review_id", "user_id", "rating", "comment", "created_at").
+        From("reviews").
+        Where(sq.Eq{"kitchen_id": in.KitchenId}).
+        OrderBy("created_at DESC").
+        Limit(uint64(limit)).
+        Offset(uint64(offset)).
+        ToSql()
+    if err != nil {
+        s.logger.Error("Failed to build query", "error", err)
+        return nil, err
+    }
+
+    rows, err := s.db.QueryContext(ctx, query, args...)
+    if err != nil {
+        s.logger.Error("Failed to execute query", "error", err)
+        return nil, err
+    }
+    defer rows.Close()
+
+    var reviews []*pb.Review
+
+    for rows.Next() {
+        review := &pb.Review{}
+        var createdAt time.Time
+        err = rows.Scan(
+            &review.ReviewId,
+            &review.UserName,
+            &review.Rating,
+            &review.Comment,
+            &createdAt,
+        )
+        if err != nil {
+            s.logger.Error("Failed to scan row", "error", err)
+            return nil, err
+        }
+        review.CreatedAt = createdAt.Format("2006-01-02 15:04:05")
+        reviews = append(reviews, review)
+    }
+
+    if err = rows.Err(); err != nil {
+        s.logger.Error("Error after scanning rows", "error", err)
+        return nil, err
+    }
+
+    return &pb.ListReviewsResponse{
+        Reviews:       reviews,
+        Total:         total,
+        AverageRating: averageRating,
+        Page:          page,
+        Limit:         limit,
+    }, nil
 }
+

@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"log"
 	pb "order-service/genprotos/order_pb"
 	"time"
 
@@ -239,6 +240,8 @@ func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb
 		s.logger.Error("Failed to build query", "error", err)
 		return nil, status.Error(codes.Internal, "Internal server error")
 	}
+
+	log.Println(query)
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
