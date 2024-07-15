@@ -57,7 +57,6 @@ func (s *OrderSt) AddReview(ctx context.Context, in *pb.AddReviewRequest) (*pb.A
 
 // 10
 func (s *OrderSt) ListReviews(ctx context.Context, in *pb.ListReviewsRequest) (*pb.ListReviewsResponse, error) {
-    // Calculate total reviews and average rating
     var total int32
     var averageRating float32
     countQuery, countArgs, err := s.queryBuilder.Select("COUNT(*)", "AVG(rating)").
@@ -75,7 +74,6 @@ func (s *OrderSt) ListReviews(ctx context.Context, in *pb.ListReviewsRequest) (*
         return nil, err
     }
 
-    // Set default values for limit and page
     limit := in.Limit
     if limit <= 0 {
         limit = 10
@@ -92,7 +90,6 @@ func (s *OrderSt) ListReviews(ctx context.Context, in *pb.ListReviewsRequest) (*
 
     offset := (page - 1) * limit
 
-    // Main query to fetch reviews
     query, args, err := s.queryBuilder.Select("review_id", "user_id", "rating", "comment", "created_at").
         From("reviews").
         Where(sq.Eq{"kitchen_id": in.KitchenId}).

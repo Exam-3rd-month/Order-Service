@@ -8,8 +8,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/lib/pq"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 func (s *OrderSt) GetDishPriceById(ctx context.Context, dish_id string) (float64, error) {
@@ -35,21 +33,21 @@ func (s *OrderSt) GetDishPriceById(ctx context.Context, dish_id string) (float64
 }
 
 func (s *OrderSt) GetDishNameById(ctx context.Context, dishID string) (string, error) {
-    query, args, err := s.queryBuilder.Select("name").
-        From("dishes").
-        Where("dish_id = ?", dishID).
-        ToSql()
-    if err != nil {
-        return "", err
-    }
+	query, args, err := s.queryBuilder.Select("name").
+		From("dishes").
+		Where("dish_id = ?", dishID).
+		ToSql()
+	if err != nil {
+		return "", err
+	}
 
-    var name string
-    err = s.db.QueryRowContext(ctx, query, args...).Scan(&name)
-    if err != nil {
-        return "", err
-    }
+	var name string
+	err = s.db.QueryRowContext(ctx, query, args...).Scan(&name)
+	if err != nil {
+		return "", err
+	}
 
-    return name, nil
+	return name, nil
 }
 
 // 1
@@ -112,7 +110,7 @@ func (s *OrderSt) UpdateDish(ctx context.Context, in *pb.UpdateDishRequest) (*pb
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		s.logger.Error("Failed to begin transaction", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 	defer tx.Rollback()
 
@@ -130,28 +128,28 @@ func (s *OrderSt) UpdateDish(ctx context.Context, in *pb.UpdateDishRequest) (*pb
 		ToSql()
 	if err != nil {
 		s.logger.Error("Failed to build update query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		s.logger.Error("Failed to execute update query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		s.logger.Error("Failed to get rows affected", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	if rowsAffected == 0 {
-		return nil, status.Error(codes.NotFound, "Dish not found or already deleted")
+		return nil, err
 	}
 
 	if err := tx.Commit(); err != nil {
 		s.logger.Error("Failed to commit transaction", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	return &pb.UpdateDishResponse{
@@ -193,7 +191,6 @@ func (s *OrderSt) DeleteDish(ctx context.Context, in *pb.DeleteDishRequest) (*pb
 
 // 4
 func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb.ListDishesResponse, error) {
-	// Umumiy taomlar sonini hisoblash
 	var total int32
 	countQuery, countArgs, err := s.queryBuilder.Select("COUNT(*)").
 		From("dishes").
@@ -202,18 +199,17 @@ func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb
 		ToSql()
 	if err != nil {
 		s.logger.Error("Failed to build count query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 	err = s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		s.logger.Error("Failed to execute count query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
-	// Paginatsiya parametrlarini hisoblash va tekshirish
 	limit := in.Limit
 	if limit <= 0 {
-		limit = 10 // Default limit
+		limit = 10
 	}
 
 	totalPages := (total + limit - 1) / limit
@@ -222,13 +218,11 @@ func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb
 		page = 1
 	}
 	if page > totalPages {
-		// Agar so'ralgan sahifa mavjud sahifalardan ko'p bo'lsa, oxirgi sahifani qaytaramiz
 		page = totalPages
 	}
 
 	offset := (page - 1) * limit
 
-	// Asosiy so'rov
 	query, args, err := s.queryBuilder.Select("dish_id", "name", "price", "category", "available").
 		From("dishes").
 		Where("kitchen_id = ?", in.KitchenId).
@@ -238,7 +232,7 @@ func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb
 		ToSql()
 	if err != nil {
 		s.logger.Error("Failed to build query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	log.Println(query)
@@ -246,7 +240,7 @@ func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		s.logger.Error("Failed to execute query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -262,14 +256,14 @@ func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb
 		)
 		if err != nil {
 			s.logger.Error("Failed to scan row", "error", err)
-			return nil, status.Error(codes.Internal, "Internal server error")
+			return nil, err
 		}
 		dishes = append(dishes, dish)
 	}
 
 	if err = rows.Err(); err != nil {
 		s.logger.Error("Error after scanning rows", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	return &pb.ListDishesResponse{
@@ -280,89 +274,3 @@ func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb
 	}, nil
 }
 
-/*
--- Dishes jadvali
-CREATE TABLE IF NOT EXISTS dishes (
-    dish_id UUID PRIMARY KEY,
-    kitchen_id UUID NOT NULL,
-    name VARCHAR(100) NOT NULL,
-    description TEXT,
-    price DECIMAL(10, 2) NOT NULL,
-    category VARCHAR(50),
-    ingredients TEXT[],
-    allergens TEXT[],
-    nutrition_info JSONB,
-    dietary_info TEXT[],
-    available BOOLEAN DEFAULT true,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Orders jadvali
-CREATE TABLE IF NOT EXISTS orders (
-    order_id UUID PRIMARY KEY,
-    user_id UUID NOT NULL,
-    kitchen_id UUID NOT NULL,
-    items JSONB NOT NULL,
-    total_amount DECIMAL(10, 2) NOT NULL,
-    status VARCHAR(20) NOT NULL,
-    delivery_address TEXT NOT NULL,
-    delivery_time TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Reviews jadvali
-CREATE TABLE IF NOT EXISTS reviews (
-    review_id UUID PRIMARY KEY,
-    order_id UUID REFERENCES orders(order_id),
-    user_id UUID NOT NULL,
-    kitchen_id UUID NOT NULL,
-    rating DECIMAL(2, 1) NOT NULL,
-    comment TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Payments jadvali
-CREATE TABLE IF NOT EXISTS payments (
-    payment_id UUID PRIMARY KEY,
-    order_id UUID REFERENCES orders(order_id),
-    amount DECIMAL(10, 2) NOT NULL,
-    status VARCHAR(20) NOT NULL,
-    payment_method VARCHAR(50) NOT NULL,
-    transaction_id VARCHAR(100),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
--- Working_Hours jadvali
-CREATE TABLE IF NOT EXISTS working_hours (
-    kitchen_id UUID NOT NULL,
-    day_of_week INTEGER NOT NULL,
-    open_time TIME NOT NULL,
-    close_time TIME NOT NULL,
-    PRIMARY KEY (kitchen_id, day_of_week)
-);
-
--- User_Preferences jadvali
-CREATE TABLE IF NOT EXISTS user_preferences (
-    user_id UUID NOT NULL,
-    cuisine_type VARCHAR(50),
-    dietary_preferences TEXT[],
-    favorite_kitchen_ids UUID[],
-    PRIMARY KEY (user_id)
-);
-
--- Delivery_Routes jadvali
-CREATE TABLE IF NOT EXISTS delivery_routes (
-    delivery_id UUID PRIMARY KEY,
-    order_id UUID REFERENCES orders(order_id),
-    start_address TEXT NOT NULL,
-    end_address TEXT NOT NULL,
-    distance DECIMAL(10, 2) NOT NULL,
-    duration INTEGER NOT NULL,
-    route_polyline TEXT,
-    waypoints JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-*/

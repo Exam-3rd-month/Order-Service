@@ -14,8 +14,6 @@ import (
 
 	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 type (
@@ -45,20 +43,18 @@ func (s *OrderSt) CreateOrder(ctx context.Context, in *pb.CreateOrderRequest) (*
 	created_at := time.Now()
 	var total_amount float64
 
-	// OrderRequest ni OrderResponse ga aylantirish
 	var orderItems []*pb.OrderResponse
 	for _, item := range in.Items {
 		price, err := s.GetDishPriceById(ctx, item.DishId)
 		if err != nil {
 			s.logger.Error("Failed to get dish price", "error", err)
-			return nil, status.Error(codes.Internal, "Failed to get dish price")
+			return nil, err
 		}
 
-		// Dish nomini olish
 		dishName, err := s.GetDishNameById(ctx, item.DishId)
 		if err != nil {
 			s.logger.Error("Failed to get dish name", "error", err)
-			return nil, status.Error(codes.Internal, "Failed to get dish name")
+			return nil, err
 		}
 
 		orderItems = append(orderItems, &pb.OrderResponse{
@@ -71,11 +67,10 @@ func (s *OrderSt) CreateOrder(ctx context.Context, in *pb.CreateOrderRequest) (*
 		total_amount += price * float64(item.Quantity)
 	}
 
-	// Items ni JSON formatga o'tkazish
 	itemsJSON, err := json.Marshal(in.Items)
 	if err != nil {
 		s.logger.Error("Failed to marshal items", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	query, args, err := s.queryBuilder.Insert("orders").
@@ -102,13 +97,13 @@ func (s *OrderSt) CreateOrder(ctx context.Context, in *pb.CreateOrderRequest) (*
 		ToSql()
 	if err != nil {
 		s.logger.Error("Failed to build insert query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	_, err = s.db.ExecContext(ctx, query, args...)
 	if err != nil {
 		s.logger.Error("Failed to execute insert query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	return &pb.CreateOrderResponse{
@@ -160,13 +155,13 @@ func (s *OrderSt) ListOfOrders(ctx context.Context, in *pb.ListOfOrdersRequest) 
 		ToSql()
 	if err != nil {
 		s.logger.Error("Failed to build count query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	err = s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		s.logger.Error("Failed to execute count query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	limit := in.Limit
@@ -194,13 +189,13 @@ func (s *OrderSt) ListOfOrders(ctx context.Context, in *pb.ListOfOrdersRequest) 
 		ToSql()
 	if err != nil {
 		s.logger.Error("Failed to build query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		s.logger.Error("Failed to execute query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -218,7 +213,7 @@ func (s *OrderSt) ListOfOrders(ctx context.Context, in *pb.ListOfOrdersRequest) 
 		)
 		if err != nil {
 			s.logger.Error("Failed to scan row", "error", err)
-			return nil, status.Error(codes.Internal, "Internal server error")
+			return nil, err
 		}
 		order.CreatedAt = createdAt.Format("2006-01-02 15:04:05")
 		orders = append(orders, order)
@@ -226,7 +221,7 @@ func (s *OrderSt) ListOfOrders(ctx context.Context, in *pb.ListOfOrdersRequest) 
 
 	if err = rows.Err(); err != nil {
 		s.logger.Error("Error after scanning rows", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	return &pb.ListOfOrdersResponse{
@@ -246,13 +241,13 @@ func (s *OrderSt) GetOrderByKitchenId(ctx context.Context, in *pb.GetOrderByKitc
 		ToSql()
 	if err != nil {
 		s.logger.Error("Failed to build count query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	err = s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&total)
 	if err != nil {
 		s.logger.Error("Failed to execute count query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	limit := in.Limit
@@ -280,13 +275,13 @@ func (s *OrderSt) GetOrderByKitchenId(ctx context.Context, in *pb.GetOrderByKitc
 		ToSql()
 	if err != nil {
 		s.logger.Error("Failed to build query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	rows, err := s.db.QueryContext(ctx, query, args...)
 	if err != nil {
 		s.logger.Error("Failed to execute query", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -303,14 +298,14 @@ func (s *OrderSt) GetOrderByKitchenId(ctx context.Context, in *pb.GetOrderByKitc
 		)
 		if err != nil {
 			s.logger.Error("Failed to scan row", "error", err)
-			return nil, status.Error(codes.Internal, "Internal server error")
+			return nil, err
 		}
 		orders = append(orders, order)
 	}
 
 	if err = rows.Err(); err != nil {
 		s.logger.Error("Error after scanning rows", "error", err)
-		return nil, status.Error(codes.Internal, "Internal server error")
+		return nil, err
 	}
 
 	return &pb.GetOrderByKitchenIdResponse{
