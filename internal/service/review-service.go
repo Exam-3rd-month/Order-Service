@@ -17,4 +17,8 @@ func (s *OrderServiceSt) ListReviews(ctx context.Context, req *pb.ListReviewsReq
 	return s.service.ListReviews(ctx, req)
 }
 
-
+// 2.1
+func (s *OrderServiceSt) GetDishRecommendations(ctx context.Context, req *pb.GetDishRecommendationsRequest) (*pb.GetDishRecommendationsResponse, error) {
+	s.logger.Info("get dish recommendations request")
+	return s.service.GetDishRecommendations(ctx, req)
+}

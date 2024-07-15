@@ -1,3 +1,5 @@
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
 -- Dishes jadvali
 CREATE TABLE IF NOT EXISTS dishes (
     dish_id UUID PRIMARY KEY,
@@ -63,27 +65,4 @@ CREATE TABLE IF NOT EXISTS working_hours (
     open_time TIME NOT NULL,
     close_time TIME NOT NULL,
     PRIMARY KEY (kitchen_id, day_of_week)
-);
-
--- User_Preferences jadvali
-CREATE TABLE IF NOT EXISTS user_preferences (
-    user_id UUID NOT NULL,
-    cuisine_type VARCHAR(50),
-    dietary_preferences TEXT[],
-    favorite_kitchen_ids UUID[],
-    PRIMARY KEY (user_id)
-);
-
--- Delivery_Routes jadvali
-CREATE TABLE IF NOT EXISTS delivery_routes (
-    delivery_id UUID PRIMARY KEY,
-    order_id UUID REFERENCES orders(order_id),
-    start_address TEXT NOT NULL,
-    end_address TEXT NOT NULL,
-    distance DECIMAL(10, 2) NOT NULL,
-    duration INTEGER NOT NULL,
-    route_polyline TEXT,
-    waypoints JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
