@@ -2,6 +2,7 @@ package storage
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"strconv"
 	"time"
@@ -204,7 +205,7 @@ func (s *OrderSt) GetDishRecommendations(ctx context.Context, in *pb.GetDishReco
 			s.logger.Error("Failed to scan row", "error", err)
 			return nil, err
 		}
-		rec.Rating = float32(math.Round(float64(avgRating)*10) / 10) 
+		rec.Rating = float32(math.Round(float64(avgRating)*10) / 10)
 		recommendations = append(recommendations, &rec)
 	}
 
@@ -219,4 +220,95 @@ func (s *OrderSt) GetDishRecommendations(ctx context.Context, in *pb.GetDishReco
 		Page:                int32(page),
 		Limit:               limit,
 	}, nil
+}
+
+// 2.4
+func (s *OrderSt) CreateKitchenWorkingHours(ctx context.Context, in *pb.CreateKitchenWorkingHoursRequest) (*pb.CreateKitchenWorkingHoursResponse, error) {
+	// Kunlar va ularning raqamlari
+	dayMap := map[string]int{
+		"monday": 1, "tuesday": 2, "wednesday": 3, "thursday": 4,
+		"friday": 5, "saturday": 6, "sunday": 7,
+	}
+
+	// Tranzaksiyani boshlash
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		s.logger.Error("Failed to begin transaction", "error", err)
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// Mavjud ma'lumotlarni tekshirish
+	checkQuery, checkArgs, err := s.queryBuilder.Select("COUNT(*)").
+		From("working_hours").
+		Where(sq.Eq{"kitchen_id": in.KitchenId}).
+		ToSql()
+	if err != nil {
+		s.logger.Error("Failed to build check query", "error", err)
+		return nil, err
+	}
+
+	var count int
+	err = tx.QueryRowContext(ctx, checkQuery, checkArgs...).Scan(&count)
+	if err != nil {
+		s.logger.Error("Failed to execute check query", "error", err)
+		return nil, err
+	}
+
+	// Agar mavjud ma'lumotlar bo'lsa, ularni o'chirish
+	if count > 0 {
+		deleteQuery, deleteArgs, err := s.queryBuilder.Delete("working_hours").
+			Where(sq.Eq{"kitchen_id": in.KitchenId}).
+			ToSql()
+		if err != nil {
+			s.logger.Error("Failed to build delete query", "error", err)
+			return nil, err
+		}
+
+		_, err = tx.ExecContext(ctx, deleteQuery, deleteArgs...)
+		if err != nil {
+			s.logger.Error("Failed to execute delete query", "error", err)
+			return nil, err
+		}
+	}
+
+	// Yangi ma'lumotlarni qo'shish
+	for _, wh := range in.WorkingHours {
+		dayNum, ok := dayMap[wh.Day]
+		if !ok {
+			s.logger.Error("Invalid day", "day", wh.Day)
+			return nil, fmt.Errorf("invalid day: %s", wh.Day)
+		}
+
+		insertQuery, insertArgs, err := s.queryBuilder.Insert("working_hours").
+			Columns("kitchen_id", "day_of_week", "open_time", "close_time").
+			Values(in.KitchenId, dayNum, wh.OpenTime, wh.CloseTime).
+			ToSql()
+		if err != nil {
+			s.logger.Error("Failed to build insert query", "error", err)
+			return nil, err
+		}
+
+		_, err = tx.ExecContext(ctx, insertQuery, insertArgs...)
+		if err != nil {
+			s.logger.Error("Failed to execute insert query", "error", err)
+			return nil, err
+		}
+	}
+
+	// Tranzaksiyani tasdiqlash
+	err = tx.Commit()
+	if err != nil {
+		s.logger.Error("Failed to commit transaction", "error", err)
+		return nil, err
+	}
+
+	// Javob tayyorlash
+	response := &pb.CreateKitchenWorkingHoursResponse{
+		KitchenId:    in.KitchenId,
+		WorkingHours: in.WorkingHours,
+		CreatedAt:    time.Now().Format(time.RFC3339),
+	}
+
+	return response, nil
 }

@@ -12,6 +12,11 @@ import (
 	"github.com/google/uuid"
 )
 
+type getTotalAmountByOrderId struct {
+	total_amount float64
+	kitchen_id   string
+}
+
 func isValidNumber(cardNumber string, number int) bool {
 	cardNumber = strings.ReplaceAll(cardNumber, " ", "")
 	match, _ := regexp.MatchString("^[0-9]+$", cardNumber)
@@ -43,26 +48,26 @@ func isCardValid(expirationDate string) bool {
 	return false
 }
 
-func (s *OrderSt) getTotalAmountByOrderId(order_id string) (float64, error) {
-	query, args, err := s.queryBuilder.Select("total_amount").
+func (s *OrderSt) getTotalAmountByOrderId(order_id string) (*getTotalAmountByOrderId, error) {
+	query, args, err := s.queryBuilder.Select("total_amount", "kitchen_id").
 		From("orders").
 		Where("order_id =?", order_id).
 		Where("deleted_at IS NULL").
 		ToSql()
 	if err != nil {
 		s.logger.Error(err.Error())
-		return 0, err
+		return nil, err
 	}
 
-	var total_amount float64
+	var str getTotalAmountByOrderId
 	row := s.db.QueryRowContext(context.Background(), query, args...)
-	err = row.Scan(&total_amount)
+	err = row.Scan(&str.total_amount, &str.kitchen_id)
 	if err != nil {
 		s.logger.Error(err.Error())
-		return 0, err
+		return nil, err
 	}
 
-	return total_amount, nil
+	return &str, nil
 }
 
 // 11
@@ -77,7 +82,7 @@ func (s *OrderSt) CreatePayment(ctx context.Context, in *pb.CreatePaymentRequest
 		return nil, fmt.Errorf("invalid expiration date")
 	}
 
-	total_amount, err := s.getTotalAmountByOrderId(in.OrderId)
+	str, err := s.getTotalAmountByOrderId(in.OrderId)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +109,7 @@ func (s *OrderSt) CreatePayment(ctx context.Context, in *pb.CreatePaymentRequest
 		Values(
 			payment_id,
 			in.OrderId,
-			total_amount,
+			str.total_amount,
 			"pending",
 			in.PaymentMethod,
 			transaction_id,
@@ -144,7 +149,8 @@ func (s *OrderSt) CreatePayment(ctx context.Context, in *pb.CreatePaymentRequest
 	return &pb.CreatePaymentResponse{
 		PaymentId:     payment_id,
 		OrderId:       in.OrderId,
-		Amount:        total_amount,
+		KitchenId:     str.kitchen_id,
+		Amount:        str.total_amount,
 		Status:        "pending",
 		TransactionId: transaction_id,
 		CreatedAt:     created_at.Format("2006-01-02 15:04:05"),

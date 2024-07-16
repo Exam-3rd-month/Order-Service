@@ -13,6 +13,7 @@ type Config struct {
 
 type ServerConfig struct {
 	Port string
+	Auth_Port string
 }
 
 type DatabaseConfig struct {
@@ -30,6 +31,7 @@ func (c *Config) Load() error {
 	}
 
 	c.Server.Port = ":" + os.Getenv("SERVER_PORT")
+	c.Server.Auth_Port = ":" + os.Getenv("AUTH_PORT")
 	c.Database.Host = os.Getenv("DB_HOST")
 	c.Database.Port = os.Getenv("DB_PORT")
 	c.Database.User = os.Getenv("DB_USER")

@@ -29,7 +29,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	api := api.New(service.New(*storage, logger))
+	api := api.New(service.New(configs, *storage, logger))
 
 	log.Fatal(api.RUN(configs))
 }
