@@ -3,8 +3,6 @@ package storage
 import (
 	"context"
 	"fmt"
-	"math"
-	"strconv"
 	"time"
 
 	pb "order-service/genprotos/order_pb"
@@ -143,82 +141,6 @@ func (s *OrderSt) ListReviews(ctx context.Context, in *pb.ListReviewsRequest) (*
 		AverageRating: averageRating,
 		Page:          page,
 		Limit:         limit,
-	}, nil
-}
-
-// 2.1
-func (s *OrderSt) GetDishRecommendations(ctx context.Context, in *pb.GetDishRecommendationsRequest) (*pb.GetDishRecommendationsResponse, error) {
-	var total int32
-
-	countQuery := `
-        SELECT COUNT(DISTINCT d.dish_id)
-        FROM dishes d
-        LEFT JOIN reviews r ON d.kitchen_id = r.kitchen_id
-        WHERE d.deleted_at IS NULL AND d.available = true
-    `
-	err := s.db.QueryRowContext(ctx, countQuery).Scan(&total)
-	if err != nil {
-		s.logger.Error("Failed to execute count query", "error", err)
-		return nil, err
-	}
-
-	limit := in.Limit
-	if limit <= 0 {
-		limit = 10
-	}
-	page, err := strconv.Atoi(in.Page)
-	if err != nil || page <= 0 {
-		page = 1
-	}
-	offset := (page - 1) * int(limit)
-
-	query := `
-        SELECT d.dish_id, d.name, k.name AS kitchen_name, d.price, COALESCE(AVG(r.rating), 0) AS avg_rating
-        FROM dishes d
-        LEFT JOIN reviews r ON d.kitchen_id = r.kitchen_id
-        LEFT JOIN kitchens k ON d.kitchen_id = k.kitchen_id
-        WHERE d.deleted_at IS NULL AND d.available = true
-        GROUP BY d.dish_id, d.name, k.name, d.price
-        ORDER BY avg_rating DESC, d.name
-        LIMIT $1 OFFSET $2
-    `
-	rows, err := s.db.QueryContext(ctx, query, limit, offset)
-	if err != nil {
-		s.logger.Error("Failed to execute query", "error", err)
-		return nil, err
-	}
-	defer rows.Close()
-
-	var recommendations []*pb.DishRecommendations
-
-	for rows.Next() {
-		var rec pb.DishRecommendations
-		var avgRating float32
-		err = rows.Scan(
-			&rec.DishId,
-			&rec.Name,
-			&rec.KitchenName,
-			&rec.Price,
-			&avgRating,
-		)
-		if err != nil {
-			s.logger.Error("Failed to scan row", "error", err)
-			return nil, err
-		}
-		rec.Rating = float32(math.Round(float64(avgRating)*10) / 10)
-		recommendations = append(recommendations, &rec)
-	}
-
-	if err = rows.Err(); err != nil {
-		s.logger.Error("Error after scanning rows", "error", err)
-		return nil, err
-	}
-
-	return &pb.GetDishRecommendationsResponse{
-		DishRecommendations: recommendations,
-		Total:               total,
-		Page:                int32(page),
-		Limit:               limit,
 	}, nil
 }
 

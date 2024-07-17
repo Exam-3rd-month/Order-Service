@@ -2,10 +2,12 @@ package storage
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	pb "order-service/genprotos/order_pb"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
 )
@@ -274,3 +276,55 @@ func (s *OrderSt) ListDishes(ctx context.Context, in *pb.ListDishesRequest) (*pb
 	}, nil
 }
 
+// 2.5
+func (s *OrderSt) UpdateDishNutritionInfo(ctx context.Context, in *pb.UpdateDishNutritionInfoRequest) (*pb.UpdateDishNutritionInfoResponse, error) {
+	updated_at := time.Now()
+
+	allergens := make([]string, len(in.Allergens))
+	for i, a := range in.Allergens {
+		allergens[i] = a.Name 
+	}
+
+	dietaryInfo := make([]string, len(in.DietaryInfo))
+	for i, d := range in.DietaryInfo {
+		dietaryInfo[i] = d.Name 
+	}
+
+	nutritionInfoJSON, err := json.Marshal(in.NutritionInfo)
+	if err != nil {
+		s.logger.Error("Failed to marshal nutrition info", "error", err)
+		return nil, err
+	}
+
+	query, args, err := s.queryBuilder.
+		Update("dishes").
+		Set("allergens", pq.Array(allergens)).
+		Set("nutrition_info", nutritionInfoJSON).
+		Set("dietary_info", pq.Array(dietaryInfo)).
+		Set("updated_at", updated_at).
+		Suffix("RETURNING name").
+		Where(sq.Eq{"dish_id": in.DishId}).
+		Where("deleted_at IS NULL").
+		ToSql()
+	if err != nil {
+		s.logger.Error("Failed to build update query", "error", err)
+		return nil, err
+	}
+
+	var name string
+
+	err = s.db.QueryRowContext(ctx, query, args...).Scan(&name)
+	if err != nil {
+		s.logger.Error("Failed to execute update query", "error", err)
+		return nil, err
+	}
+
+	return &pb.UpdateDishNutritionInfoResponse{
+		DishId:        in.DishId,
+		Name:          name,
+		Allergens:     in.Allergens,
+		NutritionInfo: in.NutritionInfo,
+		DietaryInfo:   in.DietaryInfo,
+		UpdatedAt: updated_at.Format("2006-01-02 15:04:05"),
+	}, nil
+}

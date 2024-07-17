@@ -362,6 +362,66 @@ func (s *OrderSt) GetFullInfoAboutOrder(ctx context.Context, in *pb.GetFullInfoA
 	return &order, nil
 }
 
+// 2.3
+func (s *OrderSt) GetUserActivity(ctx context.Context, in *pb.GetUserActivityRequest) (*pb.GetUserActivityResponse, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+    countQuery, countArgs, err := s.queryBuilder.Select("COUNT(*)").
+        From("orders").
+        Where(sq.And{
+            sq.Eq{"user_id": in.UserId},
+            sq.Eq{"is_done": true},
+            sq.Eq{"deleted_at": nil},
+        }).
+        ToSql()
+    if err != nil {
+        s.logger.Error("Failed to build count query", "error", err)
+        return nil, err
+    }
+
+    var totalOrders int64
+    err = s.db.QueryRowContext(ctx, countQuery, countArgs...).Scan(&totalOrders)
+    if err != nil {
+        s.logger.Error("Failed to execute count query", "error", err)
+        return nil, err
+    }
+
+    // Jami sarflangan miqdorni hisoblash
+    sumQuery, sumArgs, err := s.queryBuilder.Select("COALESCE(SUM(total_amount), 0)").
+        From("orders").
+        Where(sq.And{
+            sq.Eq{"user_id": in.UserId},
+            sq.Eq{"is_done": true},
+            sq.Eq{"deleted_at": nil},
+        }).
+        ToSql()
+    if err != nil {
+        s.logger.Error("Failed to build sum query", "error", err)
+        return nil, err
+    }
+
+    var totalSpent float64
+    err = s.db.QueryRowContext(ctx, sumQuery, sumArgs...).Scan(&totalSpent)
+    if err != nil {
+        s.logger.Error("Failed to execute sum query", "error", err)
+        return nil, err
+    }
+
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+
+    return &pb.GetUserActivityResponse{
+        TotalOrders: totalOrders,
+        TotalSpent:  fmt.Sprintf("%.2f", totalSpent), 
+    }, nil
+}
+
+
 /*
 -- Dishes jadvali
 CREATE TABLE IF NOT EXISTS dishes (

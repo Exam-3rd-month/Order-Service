@@ -73,11 +73,11 @@ type OrderServiceClient interface {
 	GetDishRecommendations(ctx context.Context, in *GetDishRecommendationsRequest, opts ...grpc.CallOption) (*GetDishRecommendationsResponse, error)
 	// 2
 	GetKitchenStatistics(ctx context.Context, in *GetKitchenStatisticsRequest, opts ...grpc.CallOption) (*GetKitchenStatisticsResponse, error)
-	// 3
+	// 3 Done
 	GetUserActivity(ctx context.Context, in *GetUserActivityRequest, opts ...grpc.CallOption) (*GetUserActivityResponse, error)
 	// 4 Done
 	CreateKitchenWorkingHours(ctx context.Context, in *CreateKitchenWorkingHoursRequest, opts ...grpc.CallOption) (*CreateKitchenWorkingHoursResponse, error)
-	// 5
+	// 5 Done
 	UpdateDishNutritionInfo(ctx context.Context, in *UpdateDishNutritionInfoRequest, opts ...grpc.CallOption) (*UpdateDishNutritionInfoResponse, error)
 }
 
@@ -294,11 +294,11 @@ type OrderServiceServer interface {
 	GetDishRecommendations(context.Context, *GetDishRecommendationsRequest) (*GetDishRecommendationsResponse, error)
 	// 2
 	GetKitchenStatistics(context.Context, *GetKitchenStatisticsRequest) (*GetKitchenStatisticsResponse, error)
-	// 3
+	// 3 Done
 	GetUserActivity(context.Context, *GetUserActivityRequest) (*GetUserActivityResponse, error)
 	// 4 Done
 	CreateKitchenWorkingHours(context.Context, *CreateKitchenWorkingHoursRequest) (*CreateKitchenWorkingHoursResponse, error)
-	// 5
+	// 5 Done
 	UpdateDishNutritionInfo(context.Context, *UpdateDishNutritionInfoRequest) (*UpdateDishNutritionInfoResponse, error)
 	mustEmbedUnimplementedOrderServiceServer()
 }
