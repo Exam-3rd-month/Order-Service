@@ -6,6 +6,7 @@ import (
 
 	"order-service/genprotos/order_pb"
 	"order-service/internal/config"
+
 	"google.golang.org/grpc"
 )
 
@@ -22,7 +23,7 @@ func New(service order_pb.OrderServiceServer) *API {
 }
 
 func (a *API) RUN(config *config.Config) error {
-	listener, err := net.Listen("tcp", config.Server.Port)
+	listener, err := net.Listen("tcp", "order"+config.Server.Port)
 	if err != nil {
 		return err
 	}
